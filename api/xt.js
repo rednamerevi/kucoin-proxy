@@ -1,25 +1,30 @@
-// ⭐ განახლებული XT.com ფუნქცია (Vercel პროქსის გამოყენებით)
-async function fetchXtTickerData(symbol) {
-    // XT.com-ის API-ს სჭირდება პატარა ასოებით და ქვედა ტირეთი, მაგ. btc_usdt
-    const xtSymbol = `${symbol.toLowerCase()}_usdt`; 
-    
-    // შენი პროქსის მისამართი Vercel-ზე იქნება /api/xt
-    const requestUrl = `/api/xt?symbol=${xtSymbol}`; 
+export default async function handler(request, response) {
+  const { symbol } = request.query;
 
-    const response = await fetch(requestUrl);
-    
-    if (!response.ok) {
-        // თუ პროქსი დააბრუნებს შეცდომას, მას აქ დავიჭერთ
-        const errorData = await response.json();
-        throw new Error(`XT.com Proxy შეცდომა: ${errorData.error || response.statusText}`);
+  if (!symbol) {
+    return response.status(400).json({ error: 'Symbol parameter is required' });
+  }
+
+  const apiUrl = `https://api.xt.com/data/api/v1/getTicker?symbol=${symbol}`;
+
+  try {
+    const apiResponse = await fetch(apiUrl);
+
+    if (!apiResponse.ok) {
+      throw new Error(`XT.com API responded with status: ${apiResponse.status}`);
     }
 
-    const data = await response.json();
-    
-    if (!data || !data.price) {
-        throw new Error(`წყვილი ვერ მოიძებნა`);
-    }
+    const data = await apiResponse.json();
 
-    // ვამატებთ სიმბოლს, რადგან API-ს პასუხში არ მოდის და ჩვენ გვჭირდება
-    return { exchange: 'XT.com', ...data, symbol: xtSymbol }; 
-}
+    // ⭐ ყველაზე მთავარი ხაზი!
+    // ეს აძლევს უფლებას თქვენს ლოკალურ HTML ფაილს, რომ მიიღოს პასუხი.
+    response.setHeader('Access-Control-Allow-Origin', '*');
+
+    response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+    return response.status(200).json(data);
+
+  } catch (error) {
+    // შეცდომის შემთხვევაშიც ვაძლევთ დაკავშირების უფლებას
+    response.setHeader('Access-Control-Allow-Origin', '*');
+    return response.status(500).json({ error: error.message });
+  }
