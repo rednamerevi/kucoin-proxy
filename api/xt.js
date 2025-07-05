@@ -1,38 +1,29 @@
-// Vercel-ის სერვერული ფუნქცია XT.com-ისთვის
-export default async function handler(request, response) {
-  // CORS-ის თავსართები
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  
-  if (request.method === 'OPTIONS') {
-    return response.status(200).end();
-  }
+// File: /api/xt.js
+export default async function handler(req, res) {
+    const { symbol } = req.query;
 
-  // ვიღებთ სიმბოლოს, მაგ: ?symbol=btc_usdt
-  const { symbol } = request.query;
-
-  if (!symbol) {
-    return response.status(400).json({ error: 'Symbol parameter is required' });
-  }
-
-  const apiUrl = `https://www.xt.com/s/api/v4/public/ticker?symbol=${symbol}`;
-
-  try {
-    const apiResponse = await fetch(apiUrl);
-    if (!apiResponse.ok) {
-      throw new Error(`XT.com API-მ დააბრუნა სტატუსი: ${apiResponse.status}`);
+    if (!symbol) {
+        return res.status(400).json({ error: 'symbol პარამეტრი აუცილებელია' });
     }
-    
-    const data = await response.json();
-    if (!data.result || data.result.length === 0) {
-      throw new Error('XT.com-ზე მონაცემები ვერ მოიძებნა.');
-    }
-    
-    response.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate');
-    // XT.com აბრუნებს მასივს, ვიღებთ პირველ ელემენტს
-    return response.status(200).json(data.result[0]);
 
-  } catch (error) {
-    return response.status(500).json({ error: error.message });
-  }
+    try {
+        const apiResponse = await fetch(`https://api.xt.com/v4/public/ticker?symbol=${symbol}`);
+        const data = await apiResponse.json();
+
+        // XT.com-ის API-ს წარმატების კოდია 0. ვამოწმებთ ამას და ასევე, რომ შედეგი არ არის ცარიელი.
+        if (!apiResponse.ok || data.rc !== 0 || !data.result || data.result.length === 0) {
+            return res.status(404).json({ error: `წყვილი ვერ მოიძებნა XT.com-ზე` });
+        }
+
+        // ვაბრუნებთ პასუხს CORS ჰედერებით
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        // XT.com აბრუნებს მასივს, ჩვენ გვჭირდება პირველი ელემენტი
+        res.status(200).json(data.result[0]);
+
+    } catch (error) {
+        res.status(500).json({ error: 'Proxy სერვერის შეცდომა' });
+    }
 }
