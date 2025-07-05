@@ -1,35 +1,25 @@
-// File: /api/xt.js (გაუმჯობესებული ლოგირებით)
-export default async function handler(req, res) {
-    const { symbol } = req.query;
+// ⭐ განახლებული XT.com ფუნქცია (Vercel პროქსის გამოყენებით)
+async function fetchXtTickerData(symbol) {
+    // XT.com-ის API-ს სჭირდება პატარა ასოებით და ქვედა ტირეთი, მაგ. btc_usdt
+    const xtSymbol = `${symbol.toLowerCase()}_usdt`; 
+    
+    // შენი პროქსის მისამართი Vercel-ზე იქნება /api/xt
+    const requestUrl = `/api/xt?symbol=${xtSymbol}`; 
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    if (!symbol) {
-        return res.status(400).json({ error: 'symbol პარამეტრი აუცილებელია' });
+    const response = await fetch(requestUrl);
+    
+    if (!response.ok) {
+        // თუ პროქსი დააბრუნებს შეცდომას, მას აქ დავიჭერთ
+        const errorData = await response.json();
+        throw new Error(`XT.com Proxy შეცდომა: ${errorData.error || response.statusText}`);
     }
 
-    try {
-        const targetUrl = `https://api.xt.com/v4/public/ticker?symbol=${symbol}`;
-        const apiResponse = await fetch(targetUrl);
-
-        // ვლოგავთ გარე API-დან მიღებულ სტატუსს
-        console.log(`[xt.js] Upstream API status for ${symbol}: ${apiResponse.status}`);
-
-        const responseText = await apiResponse.text(); // ტექსტად წამოღება, რათა JSON-ის შეცდომა ავირიდოთ
-        const data = JSON.parse(responseText);
-
-        if (!apiResponse.ok || data.rc !== 0 || !data.result || data.result.length === 0) {
-            console.error(`[xt.js] Error from XT.com API for ${symbol}:`, data);
-            return res.status(404).json({ error: `წყვილი ვერ მოიძებნა XT.com-ზე`, details: data });
-        }
-
-        return res.status(200).json(data.result[0]);
-
-    } catch (error) {
-        // ვლოგავთ სრულ შეცდომას, თუ რამე მოხდა
-        console.error(`[xt.js] Fatal error in proxy for symbol ${symbol}:`, error);
-        return res.status(500).json({ error: 'Proxy სერვერის შიდა შეცდომა', details: error.message });
+    const data = await response.json();
+    
+    if (!data || !data.price) {
+        throw new Error(`წყვილი ვერ მოიძებნა`);
     }
+
+    // ვამატებთ სიმბოლს, რადგან API-ს პასუხში არ მოდის და ჩვენ გვჭირდება
+    return { exchange: 'XT.com', ...data, symbol: xtSymbol }; 
 }
