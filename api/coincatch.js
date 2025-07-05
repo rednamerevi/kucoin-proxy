@@ -1,4 +1,4 @@
-// ეს არის Vercel-ის სერვერული ფუნქცია CoinCatch-ისთვის
+// ეს არის Vercel-ის სერვერული ფუნქცია CoinCatch-ისთვის (შესწორებული ვერსია)
 export default async function handler(request, response) {
   // CORS-ის თავსართები
   response.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,8 +16,8 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: 'Symbol parameter is required' });
   }
 
-  // CoinCatch-ის API-ს მისამართი
-  const apiUrl = `https://api.coincatch.com/api/v1/ticker/24hr?symbol=${symbol}`;
+  // ⭐ შესწორებული API მისამართი და სიმბოლოს ფორმატი ⭐
+  const apiUrl = `https://api.coincatch.com/api/v1/market/ticker/24hr?symbol=${symbol}`;
 
   try {
     const apiResponse = await fetch(apiUrl);
@@ -26,14 +26,12 @@ export default async function handler(request, response) {
     }
     
     const data = await apiResponse.json();
-    // ვამოწმებთ, რომ პასუხი შეიცავს მონაცემებს
-    if (!data || !Array.isArray(data) || data.length === 0) {
+    if (data.code !== 200 || !data.data || !Array.isArray(data.data) || data.data.length === 0) {
       throw new Error('CoinCatch-ზე მონაცემები ვერ მოიძებნა ან არასწორი პასუხია.');
     }
     
-    // CoinCatch აბრუნებს მასივს ერთი ელემენტით, ამიტომ ვიღებთ პირველს
     response.setHeader('Cache-Control', 's-maxage=10, stale-while-revalidate');
-    return response.status(200).json(data[0]);
+    return response.status(200).json(data.data[0]);
 
   } catch (error) {
     return response.status(500).json({ error: error.message });
