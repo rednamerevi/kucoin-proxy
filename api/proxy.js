@@ -1,9 +1,8 @@
-// /api/proxy.js - საბოლოო, შესწორებული ვერსია (UPPERCASE ფიქსით)
+// /api/proxy.js - საბოლოო, შესწორებული ვერსია სიმბოლოების სწორი დამუშავებით
 
 async function handleRequest(apiUrl, exchangeName) {
-    // 8-წამიანი ტაიმაუტი, რათა ერთი ბირჟის "გაჭედვამ" არ დაბლოკოს ყველაფერი
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-წამიანი ტაიმაუტი
     
     try {
         const response = await fetch(apiUrl, { signal: controller.signal });
@@ -17,7 +16,6 @@ async function handleRequest(apiUrl, exchangeName) {
     }
 }
 
-// ერთიანი ფუნქცია, რომელიც იძახებს შესაბამის ბირჟის ფუნქციას
 async function getTickerData(exchange, symbol) {
     const handlers = {
         binance: async (s) => {
@@ -85,7 +83,8 @@ async function getTickerData(exchange, symbol) {
             if (!data || !data.symbol) throw new Error('Pair not found on Bitrue');
             return { askPrice: data.askPrice, bidPrice: data.bidPrice, askVolume: data.askQty, bidVolume: data.bidQty };
         },
-        'huobi (htx)': async(s) => {
+        // ⭐ Huobi (HTX) გასაღები შეცვლილია 'huobi'-თ
+        huobi: async(s) => {
             const data = await handleRequest(`https://api.huobi.pro/market/detail/merged?symbol=${s}`, 'Huobi (HTX)');
             if (data.status !== 'ok' || !data.tick) throw new Error(`Pair ${s} not found on Huobi`);
             return { askPrice: data.tick.ask[0], bidPrice: data.tick.bid[0], askVolume: data.tick.ask[1], bidVolume: data.tick.bid[1] };
@@ -111,11 +110,10 @@ async function getTickerData(exchange, symbol) {
     if (!handlerFunction) {
         throw new Error(`Unsupported exchange handler: ${exchange}`);
     }
-    // ⭐ --- მთავარი შესწორება --- ⭐
-    // ფრონტიდან მიღებულ სიმბოლოს (მაგ. btc_usdt) ვაქცევთ დიდ ასოებად (BTC_USDT),
-    // რასაც ბირჟების უმეტესობა მოითხოვს.
-    return handlerFunction(symbol.toUpperCase());
+    // ⭐ მთავარი შესწორება: აღარ ვიყენებთ toUpperCase()-ს, ვენდობით ფრონტ-ენდიდან მოსულ ფორმატს
+    return handlerFunction(symbol);
 }
+
 
 export default async function handler(request, response) {
     const { exchange, symbol } = request.query;
@@ -137,8 +135,6 @@ export default async function handler(request, response) {
         return response.status(200).json(data);
     } catch (error) {
         console.error(`Error for ${exchange} with symbol ${symbol}:`, error.message);
-        // შეცდომის შემთხვევაშიც ვაბრუნებთ 200 OK სტატუსს, მაგრამ ერორის აღწერით
-        // რათა ფრონტ-ენდის Promise.all არ გაჩერდეს ერთ შეცდომაზე
         return response.status(200).json({ 
             error: true,
             message: error.message 
