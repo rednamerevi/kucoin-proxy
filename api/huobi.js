@@ -1,4 +1,4 @@
-// /api/huobi.js
+// /api/huobi.js - საბოლოო ვერსია ეფექტური v1 მისამართით
 
 export default async function handler(request, response) {
   // ვიღებთ სიმბოლოს, მაგ: btcusdt
@@ -8,8 +8,8 @@ export default async function handler(request, response) {
     return response.status(400).json({ error: 'Symbol parameter is required' });
   }
 
-  // Huobi-ს API ყველა წყვილს ერთად აბრუნებს
-  const apiUrl = `https://api.huobi.pro/market/tickers`;
+  // ⭐ ვიყენებთ ახალ, ეფექტურ API მისამართს, რომელიც მხოლოდ ერთ წყვილს აბრუნებს
+  const apiUrl = `https://api.huobi.pro/market/detail/merged?symbol=${symbol}`;
 
   try {
     const apiResponse = await fetch(apiUrl);
@@ -18,21 +18,16 @@ export default async function handler(request, response) {
     }
     const data = await apiResponse.json();
 
-    if (data.status !== 'ok' || !data.data || data.data.length === 0) {
-      throw new Error('Huobi API did not return valid data');
+    if (data.status !== 'ok' || !data.tick) {
+      throw new Error(`Pair ${symbol} not found on Huobi or API error`);
     }
 
-    // ვეძებთ ჩვენს სიმბოლოს დაბრუნებულ დიდ სიაში
-    const ticker = data.data.find(t => t.symbol === symbol);
-
-    if (!ticker) {
-      throw new Error(`Pair ${symbol} not found on Huobi`);
-    }
+    const ticker = data.tick;
 
     // ვქმნით სტანდარტულ ობიექტს
     const formattedData = {
-      askPrice: ticker.ask,
-      bidPrice: ticker.bid,
+      askPrice: ticker.ask[0], // Ask price არის მასივის პირველი ელემენტი
+      bidPrice: ticker.bid[0], // Bid price არის მასივის პირველი ელემენტი
       price: ticker.close
     };
 
