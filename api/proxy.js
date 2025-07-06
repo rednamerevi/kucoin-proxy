@@ -1,15 +1,23 @@
-// /api/proxy.js - საბოლოო, შეცდომების მიმართ მდგრადი ვერსია
+// /api/proxy.js - საბოლოო, შესწორებული ვერსია (UPPERCASE ფიქსით)
 
 async function handleRequest(apiUrl, exchangeName) {
-    const response = await fetch(apiUrl, { timeout: 8000 }); // 8-წამიანი ტაიმაუტი
-    if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`${exchangeName} API responded with status: ${response.status}. Body: ${errorBody}`);
+    // 8-წამიანი ტაიმაუტი, რათა ერთი ბირჟის "გაჭედვამ" არ დაბლოკოს ყველაფერი
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    try {
+        const response = await fetch(apiUrl, { signal: controller.signal });
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`${exchangeName} API responded with status: ${response.status}. Body: ${errorBody}`);
+        }
+        return response.json();
+    } finally {
+        clearTimeout(timeoutId);
     }
-    return response.json();
 }
 
-// თითოეული ფუნქცია ახლა აბრუნებს სრულ ობიექტს
+// ერთიანი ფუნქცია, რომელიც იძახებს შესაბამის ბირჟის ფუნქციას
 async function getTickerData(exchange, symbol) {
     const handlers = {
         binance: async (s) => {
@@ -103,9 +111,11 @@ async function getTickerData(exchange, symbol) {
     if (!handlerFunction) {
         throw new Error(`Unsupported exchange handler: ${exchange}`);
     }
+    // ⭐ --- მთავარი შესწორება --- ⭐
+    // ფრონტიდან მიღებულ სიმბოლოს (მაგ. btc_usdt) ვაქცევთ დიდ ასოებად (BTC_USDT),
+    // რასაც ბირჟების უმეტესობა მოითხოვს.
     return handlerFunction(symbol.toUpperCase());
 }
-
 
 export default async function handler(request, response) {
     const { exchange, symbol } = request.query;
@@ -118,7 +128,7 @@ export default async function handler(request, response) {
         return response.status(200).end();
     }
     if (!exchange || !symbol) {
-        return response.status(400).json({ error: true, message: 'Exchange and symbol parameters are required' });
+        return response.status(200).json({ error: true, message: 'Exchange and symbol parameters are required' });
     }
 
     try {
@@ -126,7 +136,9 @@ export default async function handler(request, response) {
         response.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=30');
         return response.status(200).json(data);
     } catch (error) {
+        console.error(`Error for ${exchange} with symbol ${symbol}:`, error.message);
         // შეცდომის შემთხვევაშიც ვაბრუნებთ 200 OK სტატუსს, მაგრამ ერორის აღწერით
+        // რათა ფრონტ-ენდის Promise.all არ გაჩერდეს ერთ შეცდომაზე
         return response.status(200).json({ 
             error: true,
             message: error.message 
