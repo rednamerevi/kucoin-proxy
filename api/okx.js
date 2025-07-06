@@ -1,4 +1,4 @@
-// /api/okx.js - ვერსია ქეშის გასუფთავებისთვის
+// /api/okx.js - საბოლოო და სწორი ვერსია
 
 export default async function handler(request, response) {
   // ვიღებთ სიმბოლოს, მაგ: ETH-USDT
@@ -16,7 +16,7 @@ export default async function handler(request, response) {
     if (!apiResponse.ok) {
       throw new Error(`OKX API responded with status: ${apiResponse.status}`);
     }
-    const data = await response.json();
+    const data = await apiResponse.json();
 
     if (data.code !== '0' || !data.data || data.data.length === 0) {
       throw new Error('Pair not found on OKX or API error');
@@ -31,8 +31,7 @@ export default async function handler(request, response) {
     };
 
     response.setHeader('Access-Control-Allow-Origin', '*');
-    // ვაყენებთ Cache-Control-ს, რომ პასუხი არ დამახსოვრდეს სერვერზე
-    response.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
     return response.status(200).json(formattedData);
 
   } catch (error) {
