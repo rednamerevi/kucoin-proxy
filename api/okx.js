@@ -1,4 +1,4 @@
-// /api/okx.js
+// /api/okx.js - საბოლოო და სწორი ვერსია
 
 export default async function handler(request, response) {
   // ვიღებთ სიმბოლოს, მაგ: ETH-USDT
