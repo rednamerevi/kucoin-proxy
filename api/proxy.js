@@ -1,17 +1,15 @@
-// /api/proxy.js - თქვენი სრული კოდი DEX-ის შესწორებული ლოგიკით
+// /api/proxy.js - საბოლოო, შესწორებული ვერსია
 
-// Helper function to handle API requests with a timeout
 async function handleRequest(apiUrl, exchangeName) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
         const response = await fetch(apiUrl, { 
             signal: controller.signal,
-            headers: { 'Accept': 'application/json;version=20230302' } // GeckoTerminal-სთვის რეკომენდებული ჰედერი
+            headers: { 'Accept': 'application/json;version=20230302' }
         });
         if (!response.ok) {
             const errorBody = await response.text();
-            // 404 is a common "not found" error, not necessarily a server crash
             if (response.status === 404) {
                  throw new Error(`წყვილი ვერ მოიძებნა ${exchangeName}-ზე.`);
             }
@@ -23,7 +21,6 @@ async function handleRequest(apiUrl, exchangeName) {
     }
 }
 
-// Main function to get data from different exchanges
 async function getTickerData(exchange, params) {
     const handlers = {
         // CEX Handlers (unchanged)
@@ -43,76 +40,43 @@ async function getTickerData(exchange, params) {
         'xt.com': async (p) => { const data = await handleRequest(`https://sapi.xt.com/v4/public/depth?symbol=${p.symbol}&limit=1`, 'XT.com'); if (data.rc !== 0 || !data.result || !data.result.a || data.result.a.length === 0) throw new Error('Pair not found on XT.com'); return { askPrice: data.result.a[0][0], bidPrice: data.result.b[0][0], askVolume: data.result.a[0][1], bidVolume: data.result.b[0][1] }; },
         hitbtc: async (p) => { const data = await handleRequest(`https://api.hitbtc.com/api/3/public/orderbook/${p.symbol}?limit=1`, 'HitBTC'); if (!data.ask || !data.ask[0]) throw new Error(`Pair not found on HitBTC`); return { askPrice: data.ask[0].price, bidPrice: data.bid[0].price, askVolume: data.ask[0].size, bidVolume: data.bid[0].size }; },
         ascendex: async (p) => { const data = await handleRequest(`https://ascendex.com/api/pro/v1/spot/ticker?symbol=${p.symbol}`, 'AscendEX'); if (data.code !== 0 || !data.data) throw new Error('Pair not found on AscendEX'); return { askPrice: data.data.ask[0], bidPrice: data.data.bid[0], askVolume: data.data.ask[1], bidVolume: data.data.bid[1] }; },
-
-        // --- CORRECTED DEX HANDLER ---
+        
         dex: async (p) => {
-            // p.network is from CoinGecko (e.g., 'binance-smart-chain')
-            // p.contract is the TOKEN address
-            
-            // Step 1: Map CoinGecko network ID to GeckoTerminal network ID
-            const networkMap = {
-                'ethereum': 'eth',
-                'binance-smart-chain': 'bsc',
-                'solana': 'sol',
-                'arbitrum-one': 'arbitrum',
-                'polygon-pos': 'polygon_pos',
-                'avalanche': 'avax',
-                'optimistic-ethereum': 'optimism',
-                'base': 'base'
-            };
+            const networkMap = { 'ethereum': 'eth', 'binance-smart-chain': 'bsc', 'solana': 'sol', 'arbitrum-one': 'arbitrum', 'polygon-pos': 'polygon_pos', 'avalanche': 'avax', 'optimistic-ethereum': 'optimism', 'base': 'base' };
             const geckoTerminalNetwork = networkMap[p.network];
-            if (!geckoTerminalNetwork) {
-                throw new Error(`Unsupported network for DEX lookup: ${p.network}`);
-            }
+            if (!geckoTerminalNetwork) { throw new Error(`Unsupported network for DEX lookup: ${p.network}`); }
 
-            // Step 2: Search for the best pool using the TOKEN address
             const searchUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoTerminalNetwork}/tokens/${p.contract}/pools`;
             const poolsData = await handleRequest(searchUrl, `DEX Search (${p.network})`);
             
-            if (!poolsData.data || poolsData.data.length === 0) {
-                throw new Error('No liquidity pools found for this token on GeckoTerminal.');
-            }
+            if (!poolsData.data || poolsData.data.length === 0) { throw new Error('No liquidity pools found for this token.'); }
 
-            // Find the pool with the highest USD volume in the last 24h
-            const bestPool = poolsData.data.reduce((max, pool) => {
-                const maxVol = parseFloat(max.attributes.volume_usd.h24);
-                const currentVol = parseFloat(pool.attributes.volume_usd.h24);
-                return currentVol > maxVol ? pool : max;
-            });
+            const bestPool = poolsData.data.reduce((max, pool) => (parseFloat(max.attributes.volume_usd.h24) > parseFloat(pool.attributes.volume_usd.h24) ? max : pool));
             
-            const poolAddress = bestPool.id;
+            const poolAddress = bestPool.id.split('_').pop(); // Get the actual pool address
             const dexName = bestPool.relationships.dex.data.id;
-            
-            // Step 3: Get the price from the now-found POOL address
-            // NOTE: GeckoTerminal pool endpoints often don't provide a simple bid/ask.
-            // We use the base token price as a close approximation for both.
             const price = parseFloat(bestPool.attributes.base_token_price_usd);
-            if (!price || price <= 0) {
-                 throw new Error('Price not available for the best pool.');
-            }
-
-            // The volume can be taken from the reserve_in_usd
+            if (!price || price <= 0) { throw new Error('Price not available for the best pool.'); }
             const reserve = parseFloat(bestPool.attributes.reserve_in_usd);
             
             return {
                 askPrice: price,
                 bidPrice: price,
-                askVolume: reserve ? reserve / (2 * price) : 0, // Approximate volume
-                bidVolume: reserve ? reserve / (2 * price) : 0, // Approximate volume
-                dexName: dexName.split('_').join(' ') // e.g. uniswap_v3 -> uniswap v3
+                askVolume: reserve ? reserve / (2 * price) : 0,
+                bidVolume: reserve ? reserve / (2 * price) : 0,
+                dexName: dexName.split('_').join(' '),
+                // --- ADDED THIS DATA FOR THE FRONTEND ---
+                poolAddress: poolAddress,
+                networkSlug: geckoTerminalNetwork 
             };
         }
     };
 
     const handlerFunction = handlers[exchange.toLowerCase()];
-    if (!handlerFunction) {
-        throw new Error(`Unsupported exchange handler: ${exchange}`);
-    }
-    
+    if (!handlerFunction) { throw new Error(`Unsupported exchange handler: ${exchange}`); }
     return handlerFunction(params);
 }
 
-// --- Main Serverless Handler ---
 export default async function handler(request, response) {
     const { exchange, symbol, network, contract } = request.query;
 
@@ -120,38 +84,24 @@ export default async function handler(request, response) {
     response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    if (request.method === 'OPTIONS') {
-        return response.status(200).end();
-    }
-    
-    if (!exchange) {
-        return response.status(200).json({ error: true, message: 'Exchange parameter is required' });
-    }
+    if (request.method === 'OPTIONS') { return response.status(200).end(); }
+    if (!exchange) { return response.status(200).json({ error: true, message: 'Exchange parameter is required' }); }
 
     try {
         let params;
         if (exchange.toLowerCase() === 'dex') {
-            if (!network || !contract) {
-                return response.status(200).json({ error: true, message: 'Network and Contract parameters are required for DEX' });
-            }
+            if (!network || !contract) { return response.status(200).json({ error: true, message: 'Network and Contract parameters are required for DEX' }); }
             params = { network, contract };
         } else {
-            if (!symbol) {
-                return response.status(200).json({ error: true, message: 'Symbol parameter is required for CEX' });
-            }
+            if (!symbol) { return response.status(200).json({ error: true, message: 'Symbol parameter is required for CEX' }); }
             params = { symbol };
         }
         
         const data = await getTickerData(exchange, params);
-
         response.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=30');
         return response.status(200).json(data);
     } catch (error) {
-        // Log the detailed error on the server, but return a clean message to the user.
         console.error(`Error for ${exchange} with params ${JSON.stringify(request.query)}:`, error.message);
-        return response.status(200).json({ 
-            error: true,
-            message: error.message 
-        });
+        return response.status(200).json({ error: true, message: error.message });
     }
 }
